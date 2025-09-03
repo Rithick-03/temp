@@ -1,3 +1,107 @@
+import os
+import math
+import pandas as pd
+import re
+
+# -------------------------------
+# 1. Preprocessing function
+# -------------------------------
+def preprocess(text):
+    stop_words = {"this", "is", "a", "of", "with", "always", "the", "here", "yet", "about", "and"}
+    text = text.lower()
+    text = re.sub(r'[^a-z\s]', '', text)   # keep only letters
+    tokens = [t for t in text.split() if t not in stop_words]
+    return tokens
+
+# -------------------------------
+# 2. Load documents
+# -------------------------------
+data_folder = "your_text_files_folder"
+docs = {}
+for filename in sorted(os.listdir(data_folder)):
+    if filename.endswith(".txt"):
+        with open(os.path.join(data_folder, filename), "r") as f:
+            docs[filename] = preprocess(f.read())
+
+print("Documents loaded and tokenized:\n")
+for name, tokens in docs.items():
+    print(name, ":", tokens)
+
+# -------------------------------
+# 3. Build Term-Document Matrix
+# -------------------------------
+# Collect all terms
+all_terms = sorted(set(term for tokens in docs.values() for term in tokens))
+
+# Initialize matrix
+td_matrix = pd.DataFrame(0, index=all_terms, columns=docs.keys())
+
+# Fill counts
+for doc, tokens in docs.items():
+    for term in tokens:
+        td_matrix.loc[term, doc] += 1
+
+print("\nTerm-Document Matrix:")
+print(td_matrix)
+
+# -------------------------------
+# 4. Compute IDF
+# -------------------------------
+N = len(docs)
+idf = {}
+for term in td_matrix.index:
+    df_count = (td_matrix.loc[term] > 0).sum()
+    idf[term] = math.log10(N / df_count) if df_count > 0 else 0
+
+idf_df = pd.DataFrame.from_dict(idf, orient='index', columns=['idf'])
+
+# -------------------------------
+# 5. Compute TF-IDF
+# -------------------------------
+tfidf = td_matrix.T * idf_df["idf"].values
+print("\nTF-IDF Matrix:")
+print(tfidf)
+
+# -------------------------------
+# 6. Cosine similarity with query
+# -------------------------------
+def dot_product(v1, v2):
+    return sum(v1[i] * v2[i] for i in range(len(v1)))
+
+def magnitude(v):
+    return sum(x*x for x in v) ** 0.5
+
+def cosine_similarity(v1, v2):
+    mag1 = magnitude(v1)
+    mag2 = magnitude(v2)
+    if mag1 == 0 or mag2 == 0:
+        return 0
+    return dot_product(v1, v2) / (mag1 * mag2)
+
+# Example query
+query = "fun information retrieval"
+query_tokens = preprocess(query)
+
+# Build query vector in same term space
+query_vec = []
+for term in tfidf.columns:
+    tf = query_tokens.count(term)
+    q_weight = tf * idf.get(term, 0)
+    query_vec.append(q_weight)
+
+# Compute similarities
+scores = []
+for doc in tfidf.index:
+    row_vec = tfidf.loc[doc].tolist()
+    sim = cosine_similarity(query_vec, row_vec)
+    scores.append((doc, sim))
+
+scores.sort(key=lambda x: x[1], reverse=True)
+
+print("\nRanking of documents for query:", query)
+for doc, sim in scores:
+    print(f"{doc}: {sim:.4f}")
+
 import numpy as np
 import re
 
