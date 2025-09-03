@@ -1,3 +1,64 @@
+import numpy as np
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+# --- Step 1: Documents and Query ---
+docs = [
+    "information requirement query considers user feedback",
+    "information retrieval query depends on retrieval model",
+    "prediction problem many problems in retrieval as prediction",
+    "search engine one application of retrieval models",
+    "feedback improves query prediction"
+]
+query = "feedback improves query prediction"
+
+# --- Step 2: Build term-document frequency matrix ---
+vectorizer = CountVectorizer()
+X = vectorizer.fit_transform(docs).toarray()
+terms = vectorizer.get_feature_names_out()
+q_vec = vectorizer.transform([query]).toarray()
+
+N = len(docs)  # total docs
+df = np.sum(X > 0, axis=0)  # number of docs each term appears in
+print("df",df)
+# --- Stage 1: BIM without relevance info ---
+trk = np.log((N - df) / (df + 1e-10))  # weights
+
+# Weighting
+X_weighted = X * trk
+q_weighted = q_vec * trk
+
+# Cosine similarity
+similarities = cosine_similarity(q_weighted, X_weighted)[0]
+ranked_indices = np.argsort(-similarities)
+
+print("Stage 1 Ranking (no relevance info):")
+for rank, idx in enumerate(ranked_indices, 1):
+    print(f"Rank {rank}: D{idx+1} (score={similarities[idx]:.3f})")
+
+# --- Stage 2: Apply BIM with relevance info on top-2 ranked docs ---
+top_docs_idx = ranked_indices[:2]  # take top 2 documents
+R = len(top_docs_idx)              # number of relevant docs considered
+
+# Count rk = number of relevant docs containing term
+rk = np.sum(X[top_docs_idx, :] > 0, axis=0)
+
+# Formula: w_k = log( (rk + 0.5) / (R - rk + 0.5) ) - log( (df - rk + 0.5) / (N - df - R + rk + 0.5) )
+wk = np.log((rk + 0.5) / (R - rk + 0.5)) - np.log((df - rk + 0.5) / (N - df - R + rk + 0.5))
+
+# Reweight docs and query
+X_rel_weighted = X * wk
+q_rel_weighted = q_vec * wk
+
+# Cosine similarity again
+similarities_rel = cosine_similarity(q_rel_weighted, X_rel_weighted)[0]
+ranked_indices_rel = np.argsort(-similarities_rel)
+
+print("\nStage 2 Ranking (with relevance info from top-2 docs):")
+for rank, idx in enumerate(ranked_indices_rel, 1):
+    print(f"Rank {rank}: D{idx+1} (score={similarities_rel[idx]:.3f})")
+# ------------------
+
 import os
 import math
 import pandas as pd
